@@ -16,6 +16,9 @@ from astropy.cosmology import Planck15 as cosmo
 from astropy.table import Table
 from prospect.likelihood import NoiseModel
 from prospect.likelihood.kernels import Uncorrelated
+from prospect.utils.obsutils import fix_obs
+
+#dicionaries to translate the name into the number
 
 num_to_id_translate = {'3307':'J003601+003307',
                 '15440':'J004743+015440',
@@ -84,111 +87,152 @@ num_to_id_translate = {'3307':'J003601+003307',
                 '495751':'J164849+495751',
                 '542133':'J172010+542133'}
 id_to_num_translate = {v: k for k, v in num_to_id_translate.items()}
+translate_el={'O2_3726A':'[OII]3726',
+ 'O2_3729A':'[OII]3729',
+ 'Ne3_3869A':'[NeIII]3870',
+ 'H1r_3889A':'HeI 3889',
+ 'Ne3_3967A':'[NeIII]3968',
+ 'H1r_3970A':'H 3970',
+ 'H1r_4102A':'H delta 4102',
+ 'H1r_4341A':'H gamma 4340',
+ 'O3_4363A':'[OIII]4364',
+ 'He2r_4686A':None,
+ 'H1r_4861A':'H beta 4861',
+ 'O3_4959A':'[OIII]4960',
+ 'O3_5007A':'[OIII]5007',
+ 'He1r_5876A':'HeI 5877',
+ 'O1_6300A':'[OI]6302',
+ 'N2_6548A':'[NII]6549',
+ 'H1r_6563A':'H alpha 6563',
+ 'N2_6584A':'[NII]6585',
+ 'S2_6716A':'[SII]6717',
+ 'S2_6731A':'[SII]6732'}
 
-#read in the fsps emission lines file and the galaxies
-path_wdir = "/Users/amanda/Desktop/Paper/technical/"
-path_data = os.path.join(path_wdir, "data/")
-path_output = os.path.join(path_wdir, "prospector/")
+def enumerate_strings(strings):
+    enumerated_dict = {string: str(index + 1) for index, string in enumerate(strings)}
+    return enumerated_dict
+translate_name = enumerate_strings(id_to_num_translate.keys())
+translate_name_rev = {v: k for k, v in translate_name.items()}
 
+path_wdir = '/Users/amanda/Desktop/Paper/technical/'
+path_data = os.path.join(path_wdir, 'data/')
+path_output = os.path.join(path_wdir, 'prospector/')
+path_flury = os.path.join(path_wdir, 'data/flury/')
+
+
+
+filternames = ['sdss_u0','sdss_g0','sdss_r0','sdss_i0','sdss_z0','galex_FUV','galex_NUV','wise_w1','wise_w2','wise_w3','wise_w4']
+EL_info = pd.read_csv('/Users/amanda/opt/anaconda3/envs/astro/lib/python3.10/site-packages/fsps/data/emlines_info.dat', header=None, sep = ',')
 
 #build the obs dictionary:
 
-def build_obs(objid=0, EL_info=EL_info, el_table="ALL_Gal0_doublets.fits", phot_table="Filter0.txt", err_floor=0.05,
-               err_floor_el=0.05 **kwargs):
+
+def build_obs(objid=1, EL_info=EL_info, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, filternames = filternames, **kwargs):
     
     # choose galaxy and read in the data
-    idx_gal = objid
-    phot_cat = Table.read(os.path.join(path_phot_cat, phot_table), format="ascii")
-    el_data = fits.open(os.path.join(path_phot_cat, el_table))
-    el = el_data[1].data
-    ID = str(int(phot_cat[idx_gal]['id']))
-    print("Emission line data = "+ str(el_table)+", photometry data = "+str(phot_table)+", we are looking at galaxie "+ str(ID)+".")
-    filternames = filternames
+    phot_cat = fits.open(os.path.join(path_flury, phot_table))
+    phot = phot_cat[1].data
 
-    # take the data and store it into lists and then np.arrays
-    mags = []
-    mags_err = []
+    el = Table.read(os.path.join(path_flury, el_table), format="ascii")
+    el.add_column([i for i in range(1,67)], name='id', index=0) #uniform reference for name now possible
+
+    #two different inputs are possible for the objid, so we have to combine them into one ID we can work with:
+    if objid>70:
+        idx_gal = translate_name[num_to_id_translate[str(objid)]]
+    elif objid==0:
+        print('ERROR = objid can not be zero, the enumerations starts at 1')
+    else:
+        idx_gal = int(phot[objid-1][0])
+
+    #id will be used to access the photometry, here everything starts from 0
+
+    id = idx_gal-1
+
+    #control line gets printed:
+    print('GALAXIE: '+translate_name_rev[str(idx_gal)]+', ID: ' + str(idx_gal) + ', PHOTOMETRY: ' + phot_table + ', EMISSION_LINES: '+ el_table)
+
+    #create all the lists I need for the obs dictionary:
+
+#-------------------------------PHOTOMETRY-------------------------------------
+    maggies = []
+    maggies_unc = []
+    phot_mask = []
+    filters = []
+
+    #MAGGIES AND MAGGIES_UNC:
+
+    fil = ['FUV', 'NUV', 'U', 'G', 'R', 'I', 'Z']
+    for x in fil:
+        if phot['aper_mag_3p1_'+x][id] > 0:
+            m = 10**((phot['aper_mag_3p1_'+x][id]-8.9)/(-2.5))
+            m_err = np.abs(m - 10**(((phot['aper_mag_3p1_'+x][id]+phot['aper_magerr_3p1_'+x][id])-8.9)/(-2.5)))
+            maggies.append(m/3631)
+            maggies_unc.append(m_err/3631)
+        else:
+            maggies.append(None)
+            maggies_unc.append(None)
     
-    for x, y in enumerate(filternames):
-        m = 10**((phot_cat[y][idx_gal]-8.9)/(-2.5))
-        m_err = 10**(((phot_cat[y][idx_gal]+phot_cat[y + "_e"][idx_gal])-8.9)/(-2.5))
-        mags.append(m/3631)
-        mags_err.append(np.abs(m-m_err)/3631)
+    maggies = np.array(maggies)
+    maggies_unc = np.array(maggies_unc)
+
+
+    #PHOT_MASK:
+
+    for i in range(len(maggies)):
+        if maggies[i] == None:
+            phot_mask.append(False)
+        else:
+            phot_mask.append(True)
+    
+    phot_mask = np.array(phot_mask)
+
+
+    #FILTERS:
 
     filternames = np.array(filternames)
-    mags = np.array(mags)
-    mags_err = np.array(mags_err)
+
+#-------------------------------EMISSION LINES-------------------------------------
     
-    # ensure mags errors cover 0.0
-    mags_err = np.clip(mags_err, -1.01 * mags, np.inf)
+    wavelength = []
+    spectrum = []
+    unc = []
+    mask = []
 
-    # Prepare the emission lines now: fluxes should be in cgs units!
-    el_fluk = []
-    el_flux = []
-    el_unc = []
-    line_names = []
-    el_mask = []
-   
-    snr_limit = 1.0
 
-    
-    for i_col in el.columns.names:
-        if ("flux" in i_col) & ("err" not in i_col):
-            el_fluk.append(el[i_col][idx_gal])
-            el_unc.append(el["err_"+i_col][idx_gal])
-            line_names.append(translate_el[i_col])
+    #SPECTRUM, UNC AND WAVELENGTH:
 
-    # Build a mask for wavelength that should be ignored, in this case only the values the emission_info.dat does not have
+    for i_col in el.columns:
+        if ('Ae' not in i_col) & ('NAME' not in i_col) & ('id' not in i_col):
+            spectrum.append(el[i_col][id]*10**(-16))
+            unc.append(el[i_col+'e'][id]*10**(-16))
+            wavelength.append(translate_el[i_col])
 
-    if objid==0:
-        I_Hb = 29.1
-    elif objid==1:
-        I_Hb = 27.0
-    elif objid==2:
-        I_Hb = 14.1
-    elif objid== 3:
-        I_Hb = 35.2
-    elif objid==4:
-        I_Hb = 11.4
-  
-    def AC(x=288.8):
-        Hx_table = x
-        Hb_table = 100
-        I_Hx = Hx_table * I_Hb / 100
-        return I_Hx*10**(-16)
+    spectrum = np.array(spectrum)
+    unc = np.array(unc)
+    wavelength = np.array(wavelength)
+    #unc = [spectrum[i]/10 for i in range(len(spectrum))]
 
-    for i in range(len(el_fluk)):
-        x = AC(el_fluk[i])
-        el_flux.append(x)
-  
-    el_unc0 = [el_flux[i]/10 for i in range(len(el_flux))]
+    #MASK:
 
-    for i in range(len(el_flux)):
-        #if line_names[i] in ['[NII]6585', '[NII]6549', '[OI]6302', '[OI]6365', '[OII]3729', '[OII]3726', 'MgII 2800','H 3798','H 3835','[NeIII]3870','HeI 3889','[NeIII]3968','H delta 4102','H gamma 4340', '[OIII]4364','HeI 4472','HeI 5877','[OI]6302','[OI]6302','[SIII]6314','[OI]6365','[NII]6549','[NII]6585','[NII]6585','HeI 6680','[SII]6717','[SII]6732','HeI 7065','[ArIII]7138']:
-        if line_names[i] in ['[NII]6585', '[NII]6549', '[OI]6302', '[OI]6365', '[OII]3729', '[OII]3726', 'MgII 2800']:
-            el_mask.append(False)
-        elif el_flux[i]>0:
-            el_mask.append(True)
+    for i in range(len(wavelength)):
+        if wavelength[i]==None:
+            mask.append(False)
         else:
-            el_mask.append(False)
+            mask.append(True)
 
+    mask = np.array(mask)
 
-    el_flux = np.array(el_flux)
-    el_unc0 = np.array(el_unc0)
-    el_unc = np.array(el_unc)
-    el_mask = np.array(el_mask)
-
-    # put the names of the lines in a list, create list with the idices of the positions our EL have in the emission_info.dat file
+    #put the names of the lines in a list, create list with the idices of the positions our EL have in the emission_info.dat file
 
     line_info = np.genfromtxt(os.path.join(os.getenv("SPS_HOME"), "data/emlines_info.dat"), dtype=[('wave', 'f8'), ('name', '<U20')], delimiter=',')
     linelist = line_info["name"].tolist()
     line_indices = []
-    for n in line_names:
+    for n in wavelength:
         if n==None:
             continue
         else:
             line_indices.append(linelist.index(n))
-    
+
 
     #----------------------------------NOW CREATE OBS DICTIONARY----------------------------------#
 
@@ -200,22 +244,22 @@ def build_obs(objid=0, EL_info=EL_info, el_table="ALL_Gal0_doublets.fits", phot_
     # See the sedpy.observate.load_filters command for more details on its syntax.
 
     obs['filters'] = load_filters(filternames)
-
     obs['wave_effective'] = [f.wave_effective for f in obs['filters']]
 
     filter_width_eff = [f.effective_width for f in obs['filters']]
 
     # This is a list of maggies, converted from mags.
     # It should have the same order as `filters` above.
-    obs['maggies'] = mags
+    obs['maggies'] = maggies
 
     # You should use real flux uncertainties (incl. error floor)
-    mags_err_final = np.clip(mags_err, np.abs(mags) * err_floor, np.inf)
+    mags_err_final = np.clip(maggies_unc, np.abs(maggies) * err_floor, np.inf)
     obs['maggies_unc'] = mags_err_final
 
     # Here we mask out any NaNs or infs
     # mask bands below Lyman break (if redshift fixed)
-    obs['phot_mask'] = np.isfinite(np.squeeze(mags)) & (mags_err < 1e4) & (mags != 1.0)
+    #obs['phot_mask'] = np.isfinite(np.squeeze(maggies)) & (mags_err < 1e4) & (mags != 1.0)
+    obs['phot_mask'] = phot_mask
 
     # We do not have a spectrum, so we set some required elements of the obs dictionary to None.
     # (this would be a vector of vacuum wavelengths in angstroms)
@@ -224,23 +268,23 @@ def build_obs(objid=0, EL_info=EL_info, el_table="ALL_Gal0_doublets.fits", phot_
   
 
     # (this would be the spectrum in units of maggies)
-    obs["spectrum"] = el_flux
+    obs["spectrum"] = spectrum
     obs["line_ind"] = line_indices
 
     # (spectral uncertainties are given here)
-    el_unc_final = np.clip(el_unc, np.abs(el_flux) * err_floor_el, np.inf)
+    #el_unc_final = np.clip(el_unc, np.abs(el_flux) * err_floor_el, np.inf)
     #obs['unc'] = el_unc_final
-    obs['unc'] = el_unc0
+    obs['unc'] = unc
     # (again, to ignore a particular wavelength set the value of the
     #  corresponding elemnt of the mask to *False*)
-    obs['mask'] = el_mask
+    obs['mask'] = mask
     #obs['mask'] = [True for i in range(len(obs['spectrum']))]
     # Add unessential bonus info.  This will be stored in output
-    obs['cat_row'] = idx_gal
-    obs['id'] = ID
-    obs['z_spec'] = phot_cat[idx_gal]['redshift']
-    obs["line_names"] = line_names
-    #print(obs)
+    obs['cat_row'] = id
+    obs['id'] = idx_gal
+    obs['z_spec'] = phot['z'][id]
+    obs["line_names"] = wavelength
+    #obs = fix_obs(obs)
     return obs
 
 #build the model:
