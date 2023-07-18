@@ -80,7 +80,7 @@ def build_dis_obs(objid=3, tn = theta_number, dis_data=dis_data, el_table="lzlcs
     obs["line_ind"]     =   dis_data['line_ind']
     obs['unc']          =   dis_data['spec_unc_'+tn]
     obs['mask']         =   dis_data['mask']
-    
+
     obs['cat_row']      =   dis_data['cat_row']
     obs['id']           =   dis_data['id']
     obs['z_spec']       =   dis_data['z_spec']
@@ -90,8 +90,7 @@ def build_dis_obs(objid=3, tn = theta_number, dis_data=dis_data, el_table="lzlcs
 
 
 def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
-    
-
+        
     num_to_id_translate = {'3307':'J003601+003307',
                     '15440':'J004743+015440',
                     '223':'J011309+000223',
@@ -186,16 +185,16 @@ def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
     translate_name = enumerate_strings(id_to_num_translate.keys())
     translate_name_rev = {v: k for k, v in translate_name.items()}
 
-    path_wdir = '/Users/amanda/Desktop/Paper/technical/'
-    path_data = os.path.join(path_wdir, 'data/')
-    path_output = os.path.join(path_wdir, 'prospector/')
-    path_flury = os.path.join(path_wdir, 'data/flury/')
-    filternames = ['sdss_u0','sdss_g0','sdss_r0','sdss_i0','sdss_z0','galex_FUV','galex_NUV']
-    EL_info = pd.read_csv('/Users/amanda/opt/anaconda3/envs/astro/lib/python3.10/site-packages/fsps/data/emlines_info.dat', header=None, sep = ',')
+    path_wdir   =   '/Users/amanda/Desktop/Paper/technical/'
+    path_data   =   os.path.join(path_wdir, 'data/')
+    path_output =   os.path.join(path_wdir, 'prospector/')
+    path_flury  =   os.path.join(path_wdir, 'data/flury/')
+    filternames =   ['sdss_u0','sdss_g0','sdss_r0','sdss_i0','sdss_z0','galex_FUV','galex_NUV']
+    EL_info     =   pd.read_csv('/Users/amanda/opt/anaconda3/envs/astro/lib/python3.10/site-packages/fsps/data/emlines_info.dat', header=None, sep = ',')
 
     # choose galaxy and read in the data
-    phot_cat = fits.open(os.path.join(path_flury, phot_table))
-    phot = phot_cat[1].data
+    phot_cat    =   fits.open(os.path.join(path_flury, phot_table))
+    phot        =   phot_cat[1].data
 
     el = Table.read(os.path.join(path_flury, el_table), format="ascii")
     el.add_column([i for i in range(1,67)], name='id', index=0) #uniform reference for name now possible
@@ -218,25 +217,27 @@ def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
     #create all the lists I need for the obs dictionary:
 
 #-------------------------------PHOTOMETRY-------------------------------------
-    maggies = []
+    maggies     = []
     maggies_unc = []
-    phot_mask = []
-    filters = []
+    phot_mask   = []
 
     #MAGGIES AND MAGGIES_UNC:
 
     fil = ['FUV', 'NUV', 'U', 'G', 'R', 'I', 'Z']
     for x in fil:
         if phot['aper_mag_3p1_'+x][id] > 0:
-            m = 10**((phot['aper_mag_3p1_'+x][id]-8.9)/(-2.5))
-            m_err = np.abs(m - 10**(((phot['aper_mag_3p1_'+x][id]+phot['aper_magerr_3p1_'+x][id])-8.9)/(-2.5)))
+
+            m       =   10**((phot['aper_mag_3p1_'+x][id]-8.9)/(-2.5))
+            m_err   =   np.abs(m - 10**(((phot['aper_mag_3p1_'+x][id]+phot['aper_magerr_3p1_'+x][id])-8.9)/(-2.5)))
+
             maggies.append(m/3631)
             maggies_unc.append(m_err/3631)
+
         else:
             maggies.append(None)
             maggies_unc.append(None)
     
-    maggies = np.array(maggies)
+    maggies     = np.array(maggies)
     maggies_unc = np.array(maggies_unc)
 
 
@@ -288,9 +289,10 @@ def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
 
     #put the names of the lines in a list, create list with the idices of the positions our EL have in the emission_info.dat file
 
-    line_info = np.genfromtxt(os.path.join(os.getenv("SPS_HOME"), "data/emlines_info.dat"), dtype=[('wave', 'f8'), ('name', '<U20')], delimiter=',')
-    linelist = line_info["name"].tolist()
-    line_indices = []
+    line_info    =  np.genfromtxt(os.path.join(os.getenv("SPS_HOME"), "data/emlines_info.dat"), dtype=[('wave', 'f8'), ('name', '<U20')], delimiter=',')
+    linelist     =  line_info["name"].tolist()
+    line_indices =  []
+
     for n in wavelength:
         if n==None:
             continue
@@ -307,8 +309,8 @@ def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
     # This is a list of sedpy filter objects.
     # See the sedpy.observate.load_filters command for more details on its syntax.
 
-    obs['filters'] = load_filters(filternames)
-    obs['wave_effective'] = [f.wave_effective for f in obs['filters']]
+    obs['filters']          =   load_filters(filternames)
+    obs['wave_effective']   =   [f.wave_effective for f in obs['filters']]
 
     filter_width_eff = [f.effective_width for f in obs['filters']]
 
@@ -350,9 +352,6 @@ def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
     obs["line_names"]   =   wavelength
     #obs = fix_obs(obs)
     return obs
-
-
-
 
 def build_model(objid=1, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_frac_obrun=True, add_IGM_model=True, add_neb=True,
                 nbins_sfh=8, student_t_width=0.3, z_limit_sfh=10.0, only_lowz=False, only_highz=False, add_eline_scaling=False, **extras):
@@ -489,10 +488,6 @@ def build_model(objid=1, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_ta
 
     return model
 
-
-
-
-
 def build_sps(zcontinuous=1, sfh_template="continuity_sfh", compute_vega_mags=False, **extras):
     if (sfh_template == "continuity_sfh") or (sfh_template == "dirichlet_sfh"):
         from prospect.sources import FastStepBasis
@@ -505,8 +500,6 @@ def build_sps(zcontinuous=1, sfh_template="continuity_sfh", compute_vega_mags=Fa
                            compute_vega_mags=compute_vega_mags,
                            reserved_params=['sigma_smooth'])
     return sps
-
-
 
 def build_output(res, mod, sps, obs, sample_idx, wave_spec=np.logspace(3.5, 5, 10000), ncalc=3000, slim_down=True, shorten_spec=True, non_param=False, component_nr=None, isolate_young_stars=False, time_bins_sfh=None, abslines=None, **kwargs):
     '''
