@@ -127,7 +127,7 @@ EL_info = pd.read_csv('/Users/amanda/opt/anaconda3/envs/astro/lib/python3.10/sit
 #build the obs dictionary:
 
 
-def build_obs(objid=1, EL_info=EL_info, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, filternames = filternames, **kwargs):
+def build_obs(objid=3, EL_info=EL_info, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, filternames = filternames, **kwargs):
     
     # choose galaxy and read in the data
     phot_cat = fits.open(os.path.join(path_flury, phot_table))
@@ -193,10 +193,10 @@ def build_obs(objid=1, EL_info=EL_info, el_table="lzlcs_optlines_obs.csv", phot_
 
 #-------------------------------EMISSION LINES-------------------------------------
     
-    wavelength = []
-    spectrum = []
-    unc = []
-    mask = []
+    wavelength  =   []
+    spectrum    =   []
+    unc         =   []
+    mask        =   []
 
 
     #SPECTRUM, UNC AND WAVELENGTH:
@@ -207,9 +207,9 @@ def build_obs(objid=1, EL_info=EL_info, el_table="lzlcs_optlines_obs.csv", phot_
             unc.append(el[i_col+'e'][id]*10**(-16))
             wavelength.append(translate_el[i_col])
 
-    spectrum = np.array(spectrum)
-    unc = np.array(unc)
-    wavelength = np.array(wavelength)
+    spectrum    =   np.array(spectrum)
+    unc         =   np.array(unc)
+    wavelength  =   np.array(wavelength)
     #unc = [spectrum[i]/10 for i in range(len(spectrum))]
 
     #MASK:
@@ -274,22 +274,22 @@ def build_obs(objid=1, EL_info=EL_info, el_table="lzlcs_optlines_obs.csv", phot_
     # (spectral uncertainties are given here)
     #el_unc_final = np.clip(el_unc, np.abs(el_flux) * err_floor_el, np.inf)
     #obs['unc'] = el_unc_final
-    obs['unc'] = unc
+    obs['unc']  =   unc
     # (again, to ignore a particular wavelength set the value of the
     #  corresponding elemnt of the mask to *False*)
-    obs['mask'] = mask
+    obs['mask'] =   mask
     #obs['mask'] = [True for i in range(len(obs['spectrum']))]
     # Add unessential bonus info.  This will be stored in output
-    obs['cat_row'] = id
-    obs['id'] = idx_gal
-    obs['z_spec'] = phot['z'][id]
-    obs["line_names"] = wavelength
+    obs['cat_row']      =   id
+    obs['id']           =   idx_gal
+    obs['z_spec']       =   phot['z'][id]
+    obs["line_names"]   =   wavelength
     #obs = fix_obs(obs)
     return obs
 
 #build the model:
 
-def build_model(objid=0, fit_el=False, el_table="ALL_Gal.fits", phot_table="Filter0.txt", sfh_template="continuity_sfh", add_frac_obrun=False, add_IGM_model=False, add_duste=False, add_agn=False, add_neb=False,
+def build_model(objid=3, fit_el=False, el_table="ALL_Gal.fits", phot_table="Filter0.txt", sfh_template="continuity_sfh", add_frac_obrun=False, add_IGM_model=False, add_duste=False, add_agn=False, add_neb=False,
                 nbins_sfh=6, student_t_width=0.3, z_limit_sfh=10.0, only_lowz=False, only_highz=False, add_eline_scaling=False, **extras):
     """
     Construct a model.
