@@ -21,7 +21,75 @@ from prospect.utils.obsutils import fix_obs
 import prospect.io.read_results as reader
 
 
-def build_obs(objid=1, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
+from copy import deepcopy
+
+from astropy.cosmology import FlatLambdaCDM
+cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+from astropy.cosmology import Planck15 as cosmo
+from astropy.table import Table
+from astropy.io import fits
+
+from prospect import prospect_args
+from prospect.fitting import fit_model
+from prospect.io import write_results as writer
+from prospect.likelihood import NoiseModel
+from prospect.likelihood.kernels import Uncorrelated
+from prospect.sources.galaxy_basis import CSPSpecBasis
+from prospect.utils.obsutils import fix_obs
+from prospect.utils.plotting import get_best
+
+import prospect.io.read_results as reader
+from toolbox_prospector import *
+from prospect.models import sedmodel
+
+from sedpy.observate import load_filters
+from prospect.models.sedmodel import SpecModel, LineSpecModel
+import toolbox_prospector as tp
+from dynesty.plotting import _quantile as weighted_quantile
+
+
+
+import Build
+
+
+path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
+path_data   =   os.path.join(path_wdir, "data/")
+path_plots  =   os.path.join(path_wdir, "plots/")
+path_output =   os.path.join(path_wdir, "prospector/")
+path_flury  =   os.path.join(path_data, 'flury/')
+path_mock   =   os.path.join(path_data, 'mock/')
+
+with open(path_mock + 'distorted_data.pickle', 'rb') as f:
+    dis_data = pickle.load(f)
+
+theta_number = '0'
+
+
+def build_dis_obs(objid=3, tn = theta_number, dis_data=dis_data, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
+
+    obs = {}
+    obs['filters']          =   dis_data['filters']
+    obs['wave_effective']   =   dis_data['wave_effective']
+    obs['maggies']          =   dis_data['maggies_'+tn]
+    mags_err_final          =   np.clip(dis_data['maggies_unc_'+tn], np.abs(dis_data['maggies_'+tn]) * err_floor, np.inf)
+    obs['maggies_unc']      =   mags_err_final
+    obs['phot_mask']        =   dis_data['phot_mask']
+
+    obs["wavelength"]   =   dis_data['wavelength']
+    obs["spectrum"]     =   dis_data['spec_'+tn]
+    obs["line_ind"]     =   dis_data['line_ind']
+    obs['unc']          =   dis_data['spec_unc_'+tn]
+    obs['mask']         =   dis_data['mask']
+    
+    obs['cat_row']      =   dis_data['cat_row']
+    obs['id']           =   dis_data['id']
+    obs['z_spec']       =   dis_data['z_spec']
+    obs["line_names"]   =   dis_data['line_names']
+    return obs
+
+
+
+def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
     
 
     num_to_id_translate = {'3307':'J003601+003307',
@@ -159,25 +227,15 @@ def build_obs(objid=1, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
 
     fil = ['FUV', 'NUV', 'U', 'G', 'R', 'I', 'Z']
     for x in fil:
-        if phot['probPSF'][id]==1:
-            if phot['psf_mag_'+x][id] > 0:
-                m = 10**((phot['psf_mag_'+x][id]-8.9)/(-2.5))
-                m_err = np.abs(m - 10**(((phot['psf_mag_'+x][id]+phot['psf_magerr_'+x][id])-8.9)/(-2.5)))
-                maggies.append(m/3631)
-                maggies_unc.append(m_err/3631)
-            else:
-                maggies.append(None)
-                maggies_unc.append(None)
+        if phot['aper_mag_3p1_'+x][id] > 0:
+            m = 10**((phot['aper_mag_3p1_'+x][id]-8.9)/(-2.5))
+            m_err = np.abs(m - 10**(((phot['aper_mag_3p1_'+x][id]+phot['aper_magerr_3p1_'+x][id])-8.9)/(-2.5)))
+            maggies.append(m/3631)
+            maggies_unc.append(m_err/3631)
         else:
-            if phot['aper_mag_3p1_'+x][id] > 0:
-                m = 10**((phot['aper_mag_3p1_'+x][id]-8.9)/(-2.5))
-                m_err = np.abs(m - 10**(((phot['aper_mag_3p1_'+x][id]+phot['aper_magerr_3p1_'+x][id])-8.9)/(-2.5)))
-                maggies.append(m/3631)
-                maggies_unc.append(m_err/3631)
-            else:
-                maggies.append(None)
-                maggies_unc.append(None)
-        
+            maggies.append(None)
+            maggies_unc.append(None)
+    
     maggies = np.array(maggies)
     maggies_unc = np.array(maggies_unc)
 
@@ -199,37 +257,23 @@ def build_obs(objid=1, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
 
 #-------------------------------EMISSION LINES-------------------------------------
     
-    wavelength = []
-    spectrum = []
-    unc = []
-    mask = []
+    wavelength  =   []
+    spectrum    =   []
+    unc         =   []
+    mask        =   []
 
 
     #SPECTRUM, UNC AND WAVELENGTH:
 
-    #for i_col in el.columns:
-    #    if ('Ae' not in i_col) & ('NAME' not in i_col) & ('id' not in i_col):
-    #        if el[i_col][id] == 0:
-    #            spectrum.append(None)
-    #            unc.append(None)
-    #            wavelength.append(None)
-    #            spectrum.append(el[i_col][id]*10**(-16))
-    #        else:
-    #            unc.append(el[i_col+'e'][id]*10**(-16))
-    #            wavelength.append(translate_el[i_col])
-
     for i_col in el.columns:
         if ('Ae' not in i_col) & ('NAME' not in i_col) & ('id' not in i_col):
-            if el[i_col][id] == 0 or i_col=='He2r_4686A':
-                continue
-            else:
-                spectrum.append(el[i_col][id]*10**(-16))
-                unc.append(el[i_col+'e'][id]*10**(-16))
-                wavelength.append(translate_el[i_col])
+            spectrum.append(el[i_col][id]*10**(-16))
+            unc.append(el[i_col+'e'][id]*10**(-16))
+            wavelength.append(translate_el[i_col])
 
-    spectrum = np.array(spectrum)
-    unc = np.array(unc)
-    wavelength = np.array(wavelength)
+    spectrum    =   np.array(spectrum)
+    unc         =   np.array(unc)
+    wavelength  =   np.array(wavelength)
     #unc = [spectrum[i]/10 for i in range(len(spectrum))]
 
     #MASK:
@@ -244,7 +288,7 @@ def build_obs(objid=1, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
 
     #put the names of the lines in a list, create list with the idices of the positions our EL have in the emission_info.dat file
 
-    line_info = np.genfromtxt('/Users/amanda/opt/anaconda3/envs/astro/lib/python3.10/site-packages/fsps/data/emlines_info.dat', dtype=[('wave', 'f8'), ('name', '<U20')], delimiter=',')
+    line_info = np.genfromtxt(os.path.join(os.getenv("SPS_HOME"), "data/emlines_info.dat"), dtype=[('wave', 'f8'), ('name', '<U20')], delimiter=',')
     linelist = line_info["name"].tolist()
     line_indices = []
     for n in wavelength:
@@ -294,23 +338,24 @@ def build_obs(objid=1, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
     # (spectral uncertainties are given here)
     #el_unc_final = np.clip(el_unc, np.abs(el_flux) * err_floor_el, np.inf)
     #obs['unc'] = el_unc_final
-    obs['unc'] = unc
+    obs['unc']  =   unc
     # (again, to ignore a particular wavelength set the value of the
     #  corresponding elemnt of the mask to *False*)
-    obs['mask'] = mask
+    obs['mask'] =   mask
     #obs['mask'] = [True for i in range(len(obs['spectrum']))]
     # Add unessential bonus info.  This will be stored in output
-    obs['cat_row'] = id
-    obs['id'] = idx_gal
-    obs['z_spec'] = phot['z'][id]
-    obs["line_names"] = wavelength
+    obs['cat_row']      =   id
+    obs['id']           =   idx_gal
+    obs['z_spec']       =   phot['z'][id]
+    obs["line_names"]   =   wavelength
+    #obs = fix_obs(obs)
     return obs
 
 
 
 
-def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_IGM_model=False, add_duste=False, add_agn=False, add_neb=False,
-                nbins_sfh=6, student_t_width=0.3,add_eline_scaling=False, **extras):
+def build_model(objid=1, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_frac_obrun=True, add_IGM_model=True, add_neb=True,
+                nbins_sfh=8, student_t_width=0.3, z_limit_sfh=10.0, only_lowz=False, only_highz=False, add_eline_scaling=False, **extras):
     """
     Construct a model.
     sfh_template : "continuity_sfh", "dirichlet_sfh", "parametric_sfh"
@@ -321,60 +366,30 @@ def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_o
     from prospect.models import transforms
 
     # read in data table
-
     obs = build_obs(objid=objid, el_table=el_table, phot_table=phot_table, **extras)
-    id = obs['cat_row']
-
-
+    #print('XXXXXXX', obs)
     # get SFH template
-
     if (sfh_template == "continuity_sfh"):
         model_params = TemplateLibrary["continuity_sfh"]
     elif (sfh_template == "parametric_sfh"):
         model_params = TemplateLibrary["parametric_sfh"]
 
-
     # IMF: 0: Salpeter (1955); 1: Chabrier (2003); 2: Kroupa (2001)
-
     model_params['imf_type']['init'] = 1
 
-
     # fix redshift
-
     model_params["zred"]["init"] = obs['z_spec']
     model_params["zred"]["is_free"] = False
     
-    # fix metalicity:
 
-    model_params["logzsol"]["init"] = thet['Z[Z_{odot}]'][id]
-    model_params["logzsol"]["is_free"] = False
-
-    # fix escape fraction:
-
-    model_params["frac_obrun"] = {"N": 1,
-                                      "isfree": False,
-                                      "init":thet['f_{esc}'][id], "units": "Fraction of H-ionizing photons that escapes or is dust absorbed."}
-
-    # fix age:
-
-    model_params['tage'] = {"N": 1, "isfree": False,
-                                    "init": thet['AGE [Myr]'][id]/1000, "units": "Gyr"}
-    
-
-    #model_params["frac_obrun"]["init"] = 
-    #model_params["frac_obrun"]["is_free"] = False
-
-
-    # some functions 
-
-    def zred_to_agebins(zred=model_params["zred"]["init"], agebins=None, z_limit_sfh=10.0, nbins_sfh=6, **extras):
+    def zred_to_agebins(zred=model_params["zred"]["init"], agebins=None, z_limit_sfh=10.0, nbins_sfh=8, **extras):
         tuniv = cosmo.age(zred).value*1e9
         tbinmax = tuniv-cosmo.age(z_limit_sfh).value*1e9
         agelims = np.append(np.array([0.0, 6.7, 7.0]), np.linspace(7.0, np.log10(tbinmax), int(nbins_sfh-1))[1:])
         agebins = np.array([agelims[:-1], agelims[1:]])
         return agebins.T
     
-    def logmass_to_masses(logmass=None, logsfr_ratios=None, zred=model_params["zred"]["init"], nbins_sfh=6, z_limit_sfh=None, **extras):
+    def logmass_to_masses(logmass=None, logsfr_ratios=None, zred=model_params["zred"]["init"], nbins_sfh=8, z_limit_sfh=None, **extras):
         agebins = zred_to_agebins(zred=zred, nbins_sfh=nbins_sfh)
         logsfr_ratios = np.clip(logsfr_ratios, -10, 10)  # numerical issues...
         nbins = agebins.shape[0]
@@ -390,8 +405,8 @@ def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_o
 
     if (sfh_template == "continuity_sfh"):
         # adjust number of bins for SFH and prior
-        model_params['mass']['N'] = nbins_sfh
         model_params['agebins']['N'] = nbins_sfh
+        model_params['mass']['N'] = nbins_sfh
         model_params['logsfr_ratios']['N'] = nbins_sfh-1
         model_params['logsfr_ratios']['init'] = np.full(nbins_sfh-1, 0.0)  # constant SFH
         model_params['logsfr_ratios']['prior'] = priors.StudentT(mean=np.full(nbins_sfh-1, 0.0), scale=np.full(nbins_sfh-1, student_t_width), df=np.full(nbins_sfh-1, 2))
@@ -405,8 +420,10 @@ def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_o
         model_params["tage"]["prior"] = priors.TopHat(mini=1e-3, maxi=cosmo.age(model_params["zred"]["init"]).value)
         model_params["mass"]["prior"] = priors.LogUniform(mini=1e6, maxi=1e12)
 
+    # adjust other priors
+    model_params["logzsol"]["prior"] = priors.ClippedNormal(mean=-1.0, sigma=0.3, mini=-2.0, maxi=0.19)  # priors.TopHat(mini=-2.0, maxi=0.19)
 
-    #complexify the dust
+    # complexify the dust
     model_params['dust_type']['init'] = 4
     model_params["dust2"]["prior"] = priors.ClippedNormal(mini=0.0, maxi=4.0, mean=0.3, sigma=1)
     model_params["dust_index"] = {"N": 1,
@@ -436,20 +453,6 @@ def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_o
         model_params.update(TemplateLibrary["igm"])
         model_params["igm_factor"]['isfree'] = False
 
-    # Change the model parameter specifications based on some keyword arguments
-    if add_duste:
-        # Add dust emission (with fixed dust SED parameters)
-        model_params.update(TemplateLibrary["dust_emission"])
-        model_params['duste_gamma']['isfree'] = True
-        model_params['duste_qpah']['isfree'] = True
-        model_params['duste_umin']['isfree'] = True
-
-    if add_agn:
-        # Add dust emission (with fixed dust SED parameters)
-        model_params.update(TemplateLibrary["agn"])
-        model_params['fagn']['isfree'] = True
-        model_params['agn_tau']['isfree'] = True
-
     if add_neb:
         # Add nebular emission (with fixed parameters)
         model_params.update(TemplateLibrary["nebular"])
@@ -467,7 +470,16 @@ def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_o
                                             "isfree": True,
                                             "init": 1.0, "units": "multiplative rescaling factor",
                                             "prior": priors.ClippedNormal(mean=1.0, sigma=0.3, mini=0.0, maxi=2.0)}
+
     
+    if add_frac_obrun:
+        # absorb H-ionizing photons (i.e. no nebular emission)
+        model_params["frac_obrun"] = {"N": 1,
+                                      "isfree": True,
+                                      "init": 0.0, "units": "Fraction of H-ionizing photons that escapes or is dust absorbed.",
+                                      "prior": priors.ClippedNormal(mini=0.0, maxi=1.0, mean=0.0, sigma=0.5)}
+
+
     # Now instantiate the model using this new dictionary of parameter specifications
     if fit_el:
         print("FITTING EL MODEL")
@@ -479,177 +491,6 @@ def build_model_needs_thet(thet,objid=1, fit_el=True, el_table="lzlcs_optlines_o
 
 
 
-
-
-def build_model_w(objid=0, non_param_sfh=True, dirichlet_sfh=False, stochastic_sfh=False, add_duste=False, add_neb=False, 
-                marginalize_neb=False, add_agn=False, n_bins_sfh=10, fit_continuum=False, switch_off_phot=False, 
-                switch_off_spec=False, fixed_dust=False, outlier_model=False, **extras):
-    
-    from prospect.models.templates import TemplateLibrary, adjust_continuity_agebins, adjust_dirichlet_agebins
-    from prospect.models import priors
-    from prospect.models import transforms
-    
-    obs = build_obs(objid=objid)
-
-    
-    if non_param_sfh and not dirichlet_sfh and not stochastic_sfh:
-        model_params = TemplateLibrary["continuity_sfh"]
-    elif dirichlet_sfh:
-        model_params = TemplateLibrary["dirichlet_sfh"]
-    elif stochastic_sfh:
-        model_params = TemplateLibrary["stochastic_sfh"]
-    else:
-        model_params = TemplateLibrary["parametric_sfh"]
-        
-    model_params["zred"]['isfree'] = True
-    model_params["zred"]["init"] = obs['z_spec']
-    model_params["zred"]["prior"] = priors.TopHat(mini=obs['z_spec']-0.005, maxi=obs['z_spec']+0.005)
-    
-    if non_param_sfh:
-        t_univ = cosmo.age(obs['z_spec']).value
-        tbinmax = 0.95 * t_univ * 1e9
-        #lim1, lim2, lim3, lim4 = 7.4772, 8.0, 8.5, 9.0
-        # Early time bins: 1-5 Myr, 5-10, 10-30, 30-100, log...
-        lim1, lim2, lim3, lim4 = 6.69897, 7.0, 7.47712, 8.0
-        agelims = np.concatenate(([6., lim1, lim2], 
-                                  np.log10(np.logspace(lim3, np.log10(tbinmax), n_bins_sfh-3)).flatten().tolist(), 
-                                  [np.log10(t_univ*1e9)]))
-        if dirichlet_sfh:
-            model_params = adjust_dirichlet_agebins(model_params, agelims=agelims)
-            model_params["total_mass"]["prior"] = priors.LogUniform(mini=3e9, maxi=1e12)
-        
-        elif stochastic_sfh:
-            agebins = np.array([agelims[:-1], agelims[1:]])
-            model_params['agebins']['init'] = agebins.T
-            model_params["logmass"]["prior"] = priors.TopHat(mini=9.5, maxi=12.0)
-            
-            model_params['sigma_reg']['init'] = 0.4
-            model_params['sigma_reg']['prior'] = priors.LogUniform(mini=0.1, maxi=5.0)
-
-            model_params['tau_eq']['init'] = 2500/1e3 
-            model_params['tau_eq']['prior'] = priors.TopHat(mini=0.01, maxi=t_univ)
-            
-            model_params['tau_in']['isfree'] = False
-            model_params['tau_in']['init'] = t_univ
-
-            model_params['sigma_dyn']['init'] = 0.03 
-            model_params['sigma_dyn']['prior'] = priors.LogUniform(mini=0.001, maxi=0.1)
-            
-            model_params['tau_dyn']['init'] = 25/1e3
-            model_params['tau_dyn']['prior'] = priors.ClippedNormal(mini=0.005, maxi=0.2, mean=0.01, sigma=0.02)
-            
-            model_params = adjust_stochastic_params(model_params, tuniv=t_univ)
-            
-        else:
-            model_params = adjust_continuity_agebins(model_params, tuniv=t_univ, nbins=n_bins_sfh)
-            agebins = np.array([agelims[:-1], agelims[1:]])
-            model_params['agebins']['init'] = agebins.T
-            model_params["logmass"]["prior"] = priors.TopHat(mini=9.5, maxi=12.0)
-            
-    else:
-        model_params["tau"]["prior"] = priors.LogUniform(mini=1e-1, maxi=10)
-        model_params["tage"]["prior"] = priors.TopHat(mini=1e-3, maxi=cosmo.age(obs['redshift']).value)
-        model_params["mass"]["prior"] = priors.LogUniform(mini=3e9, maxi=1e12)
-        model_params["mass"]["init_disp"] = 1e11
-    
-    if fixed_dust:
-        model_params["logzsol"]["prior"] = priors.ClippedNormal(mini=-1.0, maxi=0.19, mean=0.0, sigma=0.15)
-    else:
-        model_params["logzsol"]["prior"] = priors.TopHat(mini=-1.0, maxi=0.19)
-        
-    if fixed_dust:
-        model_params['dust_type']['init'] = 2
-        model_params["dust2"]["prior"] = priors.ClippedNormal(mini=0.0, maxi=4.0, mean=0.3, sigma=1)
-        model_params['dust1'] = {"N": 1,
-                                "isfree": False,
-                                "init": 0.0, "units": "optical depth towards young stars",
-                                "prior": None}
-    else:
-        model_params['dust_type']['init'] = 4
-        model_params["dust2"]["prior"] = priors.ClippedNormal(mini=0.0, maxi=4.0, mean=0.3, sigma=1)
-        model_params["dust_index"] = {"N": 1,
-                                      "isfree": True,
-                                      "init": 0.0, "units": "power-law multiplication of Calzetti",
-                                      "prior": priors.TopHat(mini=-1.0, maxi=1.0)}
-        def to_dust1(dust1_fraction=None, dust1=None, dust2=None, **extras):
-            return(dust1_fraction*dust2)
-        model_params['dust1'] = {"N": 1,
-                                "isfree": False,
-                                'depends_on': to_dust1,
-                                "init": 0.0, "units": "optical depth towards young stars",
-                                "prior": None}
-        model_params['dust1_fraction'] = {'N': 1,
-                                          'isfree': True,
-                                          'init': 1.0,
-                                          'prior': priors.ClippedNormal(mini=0.0, maxi=2.0, mean=1.0, sigma=0.3)}
-    
-    # velocity dispersion
-    model_params.update(TemplateLibrary['spectral_smoothing'])
-    model_params["sigma_smooth"]["prior"] = priors.TopHat(mini=40.0, maxi=400.0)
-
-    
-    if add_duste:
-        # Add dust emission (with fixed dust SED parameters)
-        model_params.update(TemplateLibrary["dust_emission"])
-        model_params['duste_gamma']['isfree'] = True
-        model_params['duste_gamma']['init'] = 0.01
-        model_params['duste_gamma']['prior'] = priors.LogUniform(mini=1e-4, maxi=0.1)
-        model_params['duste_qpah']['isfree'] = True
-        model_params['duste_qpah']['prior'] = priors.TopHat(mini=0.5, maxi=7.0)
-        model_params['duste_umin']['isfree'] = True
-        model_params['duste_umin']['init'] = 1.0
-        model_params['duste_umin']['prior'] = priors.ClippedNormal(mini=0.1, maxi=15.0, mean=2.0, sigma=1.0)
-
-    if add_agn:
-        # Allow for the presence of an AGN in the mid-infrared
-        model_params.update(TemplateLibrary["agn"])
-        model_params['fagn']['isfree'] = True
-        model_params['fagn']['prior'] = priors.LogUniform(mini=1e-5, maxi=3.0)
-        model_params['agn_tau']['isfree'] = True
-        model_params['agn_tau']['prior'] = priors.LogUniform(mini=5.0, maxi=150.)
-
-    if add_neb:
-        # Add nebular emission
-        model_params.update(TemplateLibrary["nebular"])
-        model_params['gas_logu']['isfree'] = True
-        model_params['gas_logu']['init'] = -2.0
-        model_params['gas_logz']['isfree'] = True
-        _ = model_params["gas_logz"].pop("depends_on")
-        
-        # Adjust for widths of emission lines, i.e. gas velocity dispersion
-        model_params["nebemlineinspec"]["init"] = False
-        model_params["eline_sigma"] = {'N': 1, 
-                                       'isfree': True, 
-                                       'init': 100.0, 'units': 'km/s',
-                                       'prior': priors.TopHat(mini=30, maxi=250)}
-        if marginalize_neb:
-            model_params.update(TemplateLibrary['nebular_marginalization'])
-            model_params['eline_prior_width']['init'] = 1.0
-            model_params['use_eline_prior']['init'] = True
-
-    # This removes the continuum from the spectroscopy. Highly recommend using when modeling both photometry & spectroscopy
-    if fit_continuum:
-        # order of polynomial that's fit to spectrum
-        #polyorder_estimate = int(np.clip(np.round((np.min([7500*(obs['redshift']+1), 9150.0])-np.max([3525.0*(obs['redshift']+1), 6000.0]))/(obs['redshift']+1)*100), 10, 30))
-        model_params['polyorder'] = {'N': 1,
-                                     'init': 10,
-                                     'isfree': False}
-        
-    # This is a pixel outlier model. It helps to marginalize over poorly modeled noise, such as residual sky lines or
-    # even missing absorption lines.
-    if outlier_model:
-        model_params['f_outlier_spec'] = {"N": 1,
-                                          "isfree": True,
-                                          "init": 0.01,
-                                          "prior": priors.TopHat(mini=1e-5, maxi=0.5)}
-        model_params['nsigma_outlier_spec'] = {"N": 1,
-                                               "isfree": False,
-                                               "init": 50.0}
-        
-    model = PolySpecModel(model_params)
-    #model = sedmodel.SedModel(model_params)
-    
-    return model
 
 
 def build_sps(zcontinuous=1, sfh_template="continuity_sfh", compute_vega_mags=False, **extras):
@@ -664,3 +505,272 @@ def build_sps(zcontinuous=1, sfh_template="continuity_sfh", compute_vega_mags=Fa
                            compute_vega_mags=compute_vega_mags,
                            reserved_params=['sigma_smooth'])
     return sps
+
+
+
+def build_output(res, mod, sps, obs, sample_idx, wave_spec=np.logspace(3.5, 5, 10000), ncalc=3000, slim_down=True, shorten_spec=True, non_param=False, component_nr=None, isolate_young_stars=False, time_bins_sfh=None, abslines=None, **kwargs):
+    '''
+    abslines = ['halpha_wide', 'halpha_narrow', 'hbeta', 'hdelta_wide', 'hdelta_narrow']
+    '''
+    #obs['spectrum'] = np.array([0]*5994)
+
+    #obs['spectrum'] = np.array([0]*5994)
+
+    # fake obs
+    obs_l = deepcopy(obs)
+    obs_l['wavelength'] = wave_spec
+    obs_l['unc'] = np.nan*np.ones(len(obs_l['wavelength']))
+    obs_l['spectrum'] = np.nan*np.ones(len(obs_l['wavelength']))
+    obs_l['mask'] = (np.ones(len(obs_l['wavelength'])) == 1)
+    # compact creation of outputs
+    eout = {'thetas': {},
+            'extras': {},
+            'sfh': {},
+            'obs': {},
+            'sample_idx': sample_idx,
+            'weights': res['weights'][sample_idx]
+            }
+    fmt = {'chain': np.zeros(shape=ncalc), 'q50': 0.0, 'q84': 0.0, 'q16': 0.0}
+    # thetas
+    parnames = res['theta_labels']
+    for i, p in enumerate(parnames):
+        eout['thetas'][p] = deepcopy(fmt)
+        eout['thetas'][p]['chain'] = res['chain'][sample_idx, i]
+    # extras
+    extra_parnames = ['evidence', 'avg_age', 'lwa_rband', 'lwa_lbol', 'time_50', 'time_5', 'time_10', 'time_20', 'time_80', 'time_90', 'tau_sf', 'sfr_5', 'sfr_10', 'sfr_50', 'sfr_100', 'sfr_2000', 'ssfr_5', 'ssfr_10', 'ssfr_50', 'ssfr_100', 'ssfr_2000', 'stellar_mass', 'stellar_mass_formed', 'lir', 'luv', 'mag_1500', 'luv_intrinsic', 'lmir', 'lbol', 'nion', 'xion', 'mag_1500_intrinsic']
+    if 'fagn' in parnames:
+        extra_parnames += ['l_agn', 'fmir', 'luv_agn', 'lir_agn']
+    if isolate_young_stars:
+        extra_parnames += ['luv_young', 'lir_young']
+    for p in extra_parnames:
+        eout['extras'][p] = deepcopy(fmt)
+    # sfh
+    if time_bins_sfh is None:
+        eout['sfh']['t'] = set_sfh_time_vector(res, ncalc, component_nr=component_nr)
+    else:
+        eout['sfh']['t'] = time_bins_sfh
+    eout['sfh']['sfh'] = {'chain': np.zeros(shape=(ncalc, eout['sfh']['t'].shape[0])), 'q50': np.zeros(shape=(eout['sfh']['t'].shape[0])), 'q84': np.zeros(shape=(eout['sfh']['t'].shape[0])), 'q16': np.zeros(shape=(eout['sfh']['t'].shape[0]))}
+    # observables
+    eout['obs']['mags'] = deepcopy(fmt)
+    eout['obs']['uvj'] = np.zeros(shape=(ncalc, 3))
+    eout['obs']['mags']['chain'] = np.zeros(shape=(ncalc, len(obs['filters'])))
+    eout['obs']['spec_l'] = deepcopy(fmt)
+    eout['obs']['spec_l']['chain'] = np.zeros(shape=(ncalc, len(wave_spec)))
+    eout['obs']['spec_l_dustfree'] = deepcopy(fmt)
+    eout['obs']['spec_l_dustfree']['chain'] = np.zeros(shape=(ncalc, len(wave_spec)))
+    eout['obs']['lam_obs'] = obs['wavelength']
+    eout['obs']['lam_obs_l'] = wave_spec
+    if abslines:
+        eout['obs']['abslines'] = {key: {'ew': deepcopy(fmt), 'flux': deepcopy(fmt)} for key in abslines}
+    # eout['obs']['dn4000'] = deepcopy(fmt)
+    # emission lines
+    eline_wave, eline_lum = sps.get_galaxy_elines()
+    eout['obs']['elines'] = {}
+    eout['obs']['elines']['eline_wave'] = eline_wave
+    eout['obs']['elines']['eline_lum_sps'] = deepcopy(fmt)
+    eout['obs']['elines']['eline_lum_sps']['chain'] = np.zeros(shape=(ncalc, len(eline_wave)))
+    eout['obs']['elines']['eline_lum'] = deepcopy(fmt)
+    eout['obs']['elines']['eline_lum']['chain'] = np.zeros(shape=(ncalc, len(obs['spectrum'])))
+    # generate model w/o dependencies for young star contribution
+    model_params = deepcopy(mod.config_list)
+    noEL_model = sedmodel.SedModel(model_params)
+    for j in range(len(model_params)):
+        if model_params[j]['name'] == 'mass':
+            model_params[j].pop('depends_on', None)
+    nodep_model = sedmodel.SedModel(model_params)
+    # generate model w/o EL
+    model_params = deepcopy(mod.config_list)
+    for j in range(len(model_params)):
+        if model_params[j]['name'] == 'add_neb_emission':
+            model_params[j]['init'] = False
+        elif model_params[j]['name'] == 'add_neb_continuum':
+            model_params[j]['init'] = False
+    noneb_model = sedmodel.SedModel(model_params)
+    model_params = deepcopy(mod.config_list)
+    full_model = SpecModel(model_params)
+
+
+    # sample in the posterior
+    for jj, sidx in enumerate(sample_idx):
+        # get evidence
+        eout['extras']['evidence']['chain'][jj] = res['logz'][sidx]
+        # model call
+        thetas = res['chain'][sidx, :]
+        # get phot and spec
+        print(mod)
+        spec, phot, sm = mod.predict(thetas, obs, sps=sps)
+        eout['obs']['mags']['chain'][jj, :] = phot
+        spec_l, phot_l, sm_l = full_model.predict(thetas, obs_l, sps=sps)
+        eout['obs']['spec_l']['chain'][jj, :] = spec_l
+        # emission lines
+        eline_wave, eline_lum = sps.get_galaxy_elines()
+        eout['obs']['elines']['eline_lum_sps']['chain'][jj, :] = eline_lum
+        ###DESPRATE CHANGES 2
+        #eout['obs']['elines']['eline_lum']['chain'][jj, :len(spec)] = spec
+        #eout['obs']['elines']['eline_lum']['chain'][jj, :] = spec
+        #eout['obs']['elines']['eline_lum']['chain'][2,0:len(spec)] = eline_lum
+        #eout['obs']['elines']['eline_lum']['chain'][2,len(spec):]== spec
+        #eout['obs']['elines']['eline_lum']['chain'][2,0:len(spec)] = eline_lum
+        
+        #ORIGINAL
+        # emission lines
+
+        eline_wave, eline_lum = sps.get_galaxy_elines()
+        eout['obs']['elines']['eline_lum_sps']['chain'][jj, :] = eline_lum
+        eout['obs']['elines']['eline_lum']['chain'][jj, :] = spec
+
+        # calculate SFH-based quantities
+        sfh_params = tp.find_sfh_params(full_model, thetas, obs, sps, sm=sm)
+        if non_param:
+            sfh_params['sfh'] = -1  # non-parametric
+
+        eout['extras']['stellar_mass']['chain'][jj] = sfh_params['mass']
+        eout['extras']['stellar_mass_formed']['chain'][jj] = sfh_params['mformed']
+
+
+        # eout['sfh']['sfh']['chain'][jj, :]      = return_full_sfh(eout['sfh']['t'], sfh_params)
+        # eout['extras']['time_50']['chain'][jj]  = halfmass_assembly_time(sfh_params, frac_t=0.5)
+        # eout['extras']['time_5']['chain'][jj]   = halfmass_assembly_time(sfh_params, frac_t=0.05)
+        # eout['extras']['time_10']['chain'][jj]  = halfmass_assembly_time(sfh_params, frac_t=0.1)
+        # eout['extras']['time_20']['chain'][jj]  = halfmass_assembly_time(sfh_params, frac_t=0.2)
+        # eout['extras']['time_80']['chain'][jj]  = halfmass_assembly_time(sfh_params, frac_t=0.8)
+        # eout['extras']['time_90']['chain'][jj]  = halfmass_assembly_time(sfh_params, frac_t=0.9)
+        # eout['extras']['tau_sf']['chain'][jj]   = eout['extras']['time_20']['chain'][jj]-eout['extras']['time_80']['chain'][jj]
+        # eout['extras']['sfr_5']['chain'][jj]    = calculate_sfr(sfh_params, 0.005,  minsfr=-np.inf, maxsfr=np.inf)
+        # eout['extras']['sfr_10']['chain'][jj]   = calculate_sfr(sfh_params, 0.01,  minsfr=-np.inf, maxsfr=np.inf)
+        # eout['extras']['sfr_50']['chain'][jj]   = calculate_sfr(sfh_params, 0.05,  minsfr=-np.inf, maxsfr=np.inf)
+        # eout['extras']['sfr_100']['chain'][jj]  = calculate_sfr(sfh_params, 0.1,  minsfr=-np.inf, maxsfr=np.inf)
+        # eout['extras']['sfr_2000']['chain'][jj] = calculate_sfr(sfh_params, 2.0,  minsfr=-np.inf, maxsfr=np.inf)
+        # eout['extras']['ssfr_5']['chain'][jj]   = eout['extras']['sfr_5']['chain'][jj].squeeze() / eout['extras']['stellar_mass']['chain'][jj].squeeze()
+        # eout['extras']['ssfr_10']['chain'][jj]  = eout['extras']['sfr_10']['chain'][jj].squeeze() / eout['extras']['stellar_mass']['chain'][jj].squeeze()
+        # eout['extras']['ssfr_50']['chain'][jj]  = eout['extras']['sfr_50']['chain'][jj].squeeze() / eout['extras']['stellar_mass']['chain'][jj].squeeze()
+        # eout['extras']['ssfr_100']['chain'][jj] = eout['extras']['sfr_100']['chain'][jj].squeeze() / eout['extras']['stellar_mass']['chain'][jj].squeeze()
+        # eout['extras']['ssfr_2000']['chain'][jj]= eout['extras']['sfr_2000']['chain'][jj].squeeze() / eout['extras']['stellar_mass']['chain'][jj].squeeze()
+            
+        # get spec without dust
+        ndust_thetas = deepcopy(thetas)
+        ndust_thetas[parnames.index('dust2')] = 0.0
+        spec_l_wodust, _, _ = full_model.predict(ndust_thetas, obs_l, sps=sps)
+        eout['obs']['spec_l_dustfree']['chain'][jj, :] = spec_l_wodust
+
+        # ages
+        eout['extras']['avg_age']['chain'][jj] = tp.massweighted_age(sfh_params)
+
+    
+    # calculate percentiles from chain
+    for p in eout['thetas'].keys():
+        q50, q16, q84 = weighted_quantile(eout['thetas'][p]['chain'], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+        for q, qstr in zip([q50, q16, q84], ['q50', 'q16', 'q84']):
+            eout['thetas'][p][qstr] = q
+
+    for p in eout['extras'].keys():
+        if 'chain' not in eout['extras'][p]:
+            continue
+        elif len(eout['extras'][p]['chain']) != len(eout['weights']):
+            continue
+        else:
+            q50, q16, q84 = weighted_quantile(eout['extras'][p]['chain'], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+            for q, qstr in zip([q50, q16, q84], ['q50', 'q16', 'q84']):
+                eout['extras'][p][qstr] = q
+
+    # q50, q16, q84 = weighted_quantile(eout['obs']['dn4000']['chain'], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    # for q, qstr in zip([q50, q16, q84], ['q50', 'q16', 'q84']):
+    #     eout['obs']['dn4000'][qstr] = q
+
+    if abslines:
+        for key1 in eout['obs']['abslines'].keys():
+            for key2 in ['ew', 'flux']:
+                q50, q16, q84 = weighted_quantile(eout['obs']['abslines'][key1][key2]['chain'], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+                for q, qstr in zip([q50, q16, q84], ['q50', 'q16', 'q84']):
+                    eout['obs']['abslines'][key1][key2][qstr] = q
+
+    mag_pdf = np.zeros(shape=(eout['obs']['mags']['chain'].shape[1], 3))
+    for jj in range(eout['obs']['mags']['chain'].shape[1]):
+        mag_pdf[jj, :] = weighted_quantile(eout['obs']['mags']['chain'][:, jj], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    eout['obs']['mags']['q50'] = mag_pdf[:, 0]
+    eout['obs']['mags']['q16'] = mag_pdf[:, 1]
+    eout['obs']['mags']['q84'] = mag_pdf[:, 2]
+
+    spec_pdf = np.zeros(shape=(len(eout['obs']['lam_obs_l']), 3))
+    for jj in range(len(eout['obs']['lam_obs_l'])):
+        spec_pdf[jj, :] = weighted_quantile(eout['obs']['spec_l']['chain'][:, jj], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    eout['obs']['spec_l']['q50'] = spec_pdf[:, 0]
+    eout['obs']['spec_l']['q16'] = spec_pdf[:, 1]
+    eout['obs']['spec_l']['q84'] = spec_pdf[:, 2]
+
+    spec2_pdf = np.zeros(shape=(len(eout['obs']['lam_obs_l']), 3))
+    for jj in range(len(eout['obs']['lam_obs_l'])):
+        spec2_pdf[jj, :] = weighted_quantile(eout['obs']['spec_l_dustfree']['chain'][:, jj], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    eout['obs']['spec_l_dustfree']['q50'] = spec2_pdf[:, 0]
+    eout['obs']['spec_l_dustfree']['q16'] = spec2_pdf[:, 1]
+    eout['obs']['spec_l_dustfree']['q84'] = spec2_pdf[:, 2]
+
+    sfh_pdf = np.zeros(shape=(eout['sfh']['t'].shape[0], 3))
+    for jj in range(eout['sfh']['t'].shape[0]):
+        sfh_pdf[jj, :] = weighted_quantile(eout['sfh']['sfh']['chain'][:, jj], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    eout['sfh']['sfh']['q50'] = sfh_pdf[:, 0]
+    eout['sfh']['sfh']['q16'] = sfh_pdf[:, 1]
+    eout['sfh']['sfh']['q84'] = sfh_pdf[:, 2]
+
+    el_pdf = np.zeros(shape=(len(eout['obs']['elines']['eline_wave']), 3))
+    el_pdf2 = np.zeros(shape=(len(eout['obs']['elines']['eline_wave']), 3))
+    for jj in range(len(eout['obs']['elines']['eline_wave'])):
+        el_pdf[jj, :] = weighted_quantile(eout['obs']['elines']['eline_lum_sps']['chain'][:, jj], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    for jj in range(len(spec)):
+        el_pdf2[jj, :] = weighted_quantile(eout['obs']['elines']['eline_lum']['chain'][:, jj], np.array([0.5, 0.16, 0.84]), weights=eout['weights'])
+    eout['obs']['elines']['eline_lum_sps']['q50'] = el_pdf[:, 0]
+    eout['obs']['elines']['eline_lum_sps']['q16'] = el_pdf[:, 1]
+    eout['obs']['elines']['eline_lum_sps']['q84'] = el_pdf[:, 2]
+    eout['obs']['elines']['eline_lum']['q50'] = el_pdf2[:, 0]
+    eout['obs']['elines']['eline_lum']['q16'] = el_pdf2[:, 1]
+    eout['obs']['elines']['eline_lum']['q84'] = el_pdf2[:, 2]
+
+    if slim_down:
+        del eout['obs']['elines']['eline_lum_sps']['chain']
+        del eout['obs']['elines']['eline_lum']['chain']
+        del eout['extras']['stellar_mass_formed']['chain']
+        del eout['extras']['lmir']['chain']
+        del eout['extras']['luv']['chain']
+        if isolate_young_stars:
+            del eout['extras']['lir_young']['chain']
+            del eout['extras']['luv_young']['chain']
+        del eout['extras']['lir']['chain']
+        del eout['extras']['lbol']['chain']
+        del eout['sfh']['sfh']['chain']
+        ###del eout['obs']['dn4000']['chain']
+        del eout['obs']['spec_l']['chain']
+        del eout['obs']['spec_l_dustfree']['chain']
+        if 'fmir' in eout['extras'].keys():
+            del eout['extras']['fmir']['chain']
+        if 'lagn' in eout['extras'].keys():
+            del eout['extras']['lagn']['chain']
+        if 'lir_agn' in eout['extras'].keys():
+            del eout['extras']['lir_agn']['chain']
+        if 'luv_agn' in eout['extras'].keys():
+            del eout['extras']['luv_agn']['chain']
+        # if obs['wavelength'] is not None:
+        #     del eout['obs']['spec_woEL']['chain']
+        #     del eout['obs']['spec_wEL']['chain']
+        #     del eout['obs']['spec_EL']['chain']
+
+
+    obs["wavelength"] = np.linspace(1000, 1000000, num=int(1e5))
+
+    #get prior model parameter:
+
+    #get posterior model parameter:
+
+    #if model==None:
+    #    model = build_model()
+
+    model_params = deepcopy(mod.config_list)
+    plot_model = SpecModel(model_params)
+    obs_plot = deepcopy(obs)
+    obs_plot["wavelength"] = np.linspace(1000, 1000000, num=int(1e5))
+    
+    
+    eout['model_params']    = model_params
+    eout['plot_model']      = plot_model
+    eout['obs_plot']        = obs_plot
+
+    return eout
