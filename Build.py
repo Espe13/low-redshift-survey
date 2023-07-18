@@ -87,8 +87,6 @@ def build_dis_obs(objid=3, tn = theta_number, dis_data=dis_data, el_table="lzlcs
     obs["line_names"]   =   dis_data['line_names']
     return obs
 
-
-
 def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
         
     num_to_id_translate = {'3307':'J003601+003307',
