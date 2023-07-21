@@ -131,13 +131,13 @@ def Corner_plots(eout, res, parnames, string, thetas, path):
     #cfig = subcorner_custom(res, ranges=None,   truths=thetas['thetas_'+string], truth_color='red', color='blue')
 
     
-    plt.savefig(path + string +'_Corner.pdf')
+    plt.savefig(path +'/corner/'+ + string +'_Corner.pdf')
     plt.show()
     plt.clf()
 
 def Res_plots(eout, res, string, path):
     tfig = reader.traceplot(res, color='blue', lw=0.07)
-    plt.savefig(path+string+'_Res.pdf')
+    plt.savefig(path+'/res/'+string+'_Res.pdf')
     plt.show()
     plt.clf()
 

@@ -10,7 +10,7 @@ from prospect.io import write_results as writer
 from astropy.cosmology import Planck15 as cosmo
 
 
-iot = '3'
+iot = '4'
 
 path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
 path_output =   os.path.join(path_wdir, 'prospector/input_output_test'+iot+'/')
@@ -23,10 +23,10 @@ def build_obs(objid=3, theta = 0, err_floor=0.05, **kwargs):
 
     path_mock   =   os.path.join(path_data, 'mock/')
 
-    with open(path_data + 'distorted_data'+tn+'.pickle', 'rb') as f:
+    with open(path_data + 'distorted_data'+iot+'.pickle', 'rb') as f:
         dis_data = pickle.load(f)
 
-    with open(path_mock+'mock_thetas'+tn+'.pickle', 'rb') as f:
+    with open(path_mock+'mock_thetas'+iot+'.pickle', 'rb') as f:
         thetas = pickle.load(f)
 
     print('we look at theta ' + tn + ', with params:' +str(thetas['thetas_'+tn]))
@@ -48,7 +48,9 @@ def build_obs(objid=3, theta = 0, err_floor=0.05, **kwargs):
     obs['id']           =   dis_data['id']
     obs['z_spec']       =   dis_data['z_spec']
     obs["line_names"]   =   dis_data['line_names']
-    return obs, tn
+    obs['tn']           =   tn
+    print(obs)
+    return obs
 
 def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_frac_obrun=True, add_IGM_model=True, add_neb=True,
                 nbins_sfh=8, student_t_width=0.3, z_limit_sfh=10.0, only_lowz=False, only_highz=False, add_eline_scaling=False, **extras):
@@ -281,7 +283,7 @@ if __name__ == '__main__':
 
     print(run_params)
 
-    obs, tn, model, sps, noise = build_all(**run_params)
+    obs, model, sps, noise = build_all(**run_params)
     run_params["param_file"] = __file__
 
     if args.debug:
@@ -289,7 +291,7 @@ if __name__ == '__main__':
 
     #hfile = setup_h5(model=model, obs=obs, **run_params)
     
-    hfile = path_output + tn +  "{0}_{1}_mcmc.h5".format(args.outfile, args.objid)
+    hfile = path_output + obs['tn']+  "{0}_{1}_mcmc.h5".format(args.outfile, args.objid)
     output = fit_model(obs, model, sps, noise, **run_params)
 
     writer.write_hdf5(hfile, run_params, model, obs,

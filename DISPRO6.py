@@ -1,41 +1,34 @@
-import pandas as pd
 import numpy as np
-import math
 import sys
 import os
-import numpy as np
-import matplotlib.pyplot as plt
-from astropy.io import fits
-from sedpy.observate import load_filters
+import pickle
+
 from prospect import prospect_args
 from prospect.fitting import fit_model
 from prospect.models.sedmodel import SpecModel, LineSpecModel
-from prospect.sources.galaxy_basis import CSPSpecBasis
 from prospect.io import write_results as writer
 from astropy.cosmology import Planck15 as cosmo
-from astropy.table import Table
-from prospect.likelihood import NoiseModel
-from prospect.likelihood.kernels import Uncorrelated
-from prospect.utils.obsutils import fix_obs
-import pickle
 
-test_number = '3'
+
+iot = '4'
 
 path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
+path_output =   os.path.join(path_wdir, 'prospector/input_output_test'+iot+'/')
 path_data   =   os.path.join(path_wdir, "data/")
-path_plots  =   os.path.join(path_wdir, "plots/")
-path_output =   os.path.join(path_wdir, 'prospector/input_output_test'+test_number+'/')
-path_flury  =   os.path.join(path_data, 'flury/')
-path_mock   =   os.path.join(path_data, 'mock/')
 
-with open(path_data + 'distorted_data'+test_number+'.pickle', 'rb') as f:
-    dis_data = pickle.load(f)
+    
 
-with open(path_mock+'mock_thetas'+test_number+'.pickle', 'rb') as f:
-    thetas = pickle.load(f)
-
-def build_obs(objid=3, theta = 0, dis_data=dis_data, err_floor=0.05, **kwargs):
+def build_obs(objid=3, theta = 0, err_floor=0.05, **kwargs):
     tn = str(theta)
+
+    path_mock   =   os.path.join(path_data, 'mock/')
+
+    with open(path_data + 'distorted_data'+iot+'.pickle', 'rb') as f:
+        dis_data = pickle.load(f)
+
+    with open(path_mock+'mock_thetas'+iot+'.pickle', 'rb') as f:
+        thetas = pickle.load(f)
+
     print('we look at theta ' + tn + ', with params:' +str(thetas['thetas_'+tn]))
     obs = {}
     obs['filters']          =   dis_data['filters']
@@ -55,6 +48,8 @@ def build_obs(objid=3, theta = 0, dis_data=dis_data, err_floor=0.05, **kwargs):
     obs['id']           =   dis_data['id']
     obs['z_spec']       =   dis_data['z_spec']
     obs["line_names"]   =   dis_data['line_names']
+    obs['tn']           =   tn
+    print(obs)
     return obs
 
 def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_frac_obrun=True, add_IGM_model=True, add_neb=True,
@@ -296,7 +291,7 @@ if __name__ == '__main__':
 
     #hfile = setup_h5(model=model, obs=obs, **run_params)
     
-    hfile = path_output + "{0}_{1}_mcmc.h5".format(args.outfile, args.objid)
+    hfile = path_output + obs['tn']+  "{0}_{1}_mcmc.h5".format(args.outfile, args.objid)
     output = fit_model(obs, model, sps, noise, **run_params)
 
     writer.write_hdf5(hfile, run_params, model, obs,
