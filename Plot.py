@@ -9,21 +9,6 @@ from toolbox_prospector import *
 from dynesty.plotting import _quantile as weighted_quantile
 from prospect.utils.plotting import get_best
 
-path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
-path_data   =   os.path.join(path_wdir, "data/")
-path_plots  =   os.path.join(path_wdir, "plots/iot_snr20/")
-path_output =   os.path.join(path_wdir, "prospector/snr20/")
-path_flury  =   os.path.join(path_data, 'flury/')
-path_mock   =   os.path.join(path_data, 'mock/')
-
-with open('/Users/amanda/Desktop/Paper/technical/data/mock/mock_thetas.pickle', 'rb') as f:
-    thetas = pickle.load(f)
-
-with open(path_data + 'eout_snr20.dat', 'rb') as f:
-    iot20 = dill.load(f)
-
-with open(path_mock + 'distorted_data.pickle', 'rb') as f:
-    dis_data = pickle.load(f)
 
 def subcorner_custom(results, ranges, showpars=None, truths=None,
               start=0, thin=1, chains=slice(None),
@@ -116,7 +101,7 @@ def subcorner_custom(results, ranges, showpars=None, truths=None,
         
     return fig
 
-def Corner_plots(eout, res, parnames, string):
+def Corner_plots(eout, res, parnames, string, thetas, path):
 
     """The ranges 
     change in a way that they always incorporate the truth value"""
@@ -148,13 +133,13 @@ def Corner_plots(eout, res, parnames, string):
     #cfig = subcorner_custom(res, ranges=None,   truths=thetas['thetas_'+string], truth_color='red', color='blue')
 
     
-    plt.savefig(path_plots + string +'_Corner.pdf')
+    plt.savefig(path + string +'_Corner.pdf')
     plt.show()
     plt.clf()
 
-def Res_plots(eout, res, string):
+def Res_plots(eout, res, string, path):
     tfig = reader.traceplot(res, color='blue', lw=0.07)
-    plt.savefig(path_plots+string+'_Res.pdf')
+    plt.savefig(path+string+'_Res.pdf')
     plt.show()
     plt.clf()
 
@@ -178,7 +163,7 @@ def flam2fnu(lam,flam): # flam in erg/s/cm2/A
 def convertAB_Jy(AB):
     return 10**((8.9-AB)/2.5)
 
-def Plot_Phot(num = '0', esc = '0.0', esc_out = 0.19):
+def Plot_Phot(num, esc, esc_out, path_output, path_plots):
     
     res, obs, model = reader.results_from(path_output+ num +'_Thetas.h5')
     if model == None:
@@ -259,7 +244,7 @@ def Plot_Phot(num = '0', esc = '0.0', esc_out = 0.19):
     plt.savefig(path_plots+'photometry/' +num+'_Photometry.pdf', dpi=1200)
 
 
-def Plot_Spec(num = '0', esc = '0.0', esc_out = 0.19):
+def Plot_Spec(num, esc, esc_out, dis_data, iot20, path_output, path_plot):
     res, obs, model = reader.results_from(path_output+ num +'_Thetas.h5')
     obs_e = iot20['eout_'+num]['obs']
     f = obs['spectrum']/obs_e['elines']['eline_lum']['q50'][:len(obs['spectrum'])]
@@ -302,4 +287,4 @@ def Plot_Spec(num = '0', esc = '0.0', esc_out = 0.19):
     #fscale = np.round([output_in['thetas']['linespec_scaling']['q50'], output_in['thetas']['linespec_scaling']['q50']-output_in['thetas']['linespec_scaling']['q16'], output_in['thetas']['linespec_scaling']['q84']-output_in['thetas']['linespec_scaling']['q50']], 3)
     #ax.text(.70, .80, r'$f_{\rm scale}=%.2f_{-%.2f}^{+%.2f}$' % (fscale[0], fscale[1], fscale[2]), fontsize=16, ha='left', transform=ax.transAxes)
     plt.tight_layout()
-    plt.savefig(path_plots+'spectroscopy/' +num+'_Spectroscopy.pdf', dpi=1200)
+    plt.savefig(path_plot+'spectroscopy/' +num+'_Spectroscopy.pdf', dpi=1200)

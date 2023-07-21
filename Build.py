@@ -63,7 +63,8 @@ with open(path_mock + 'distorted_data.pickle', 'rb') as f:
     dis_data = pickle.load(f)
 
 theta_number = '0'
-
+with open(path_data + 'distorted_data.pickle', 'rb') as f:
+    dis_data = pickle.load(f)
 
 def build_dis_obs(objid=3, tn = theta_number, dis_data=dis_data, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
 
