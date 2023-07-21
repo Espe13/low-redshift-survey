@@ -1,72 +1,31 @@
-
-import sys
 import os
 import numpy as np
 import pandas as pd
 import pickle
-import math
-from astropy.io import fits
-from sedpy.observate import load_filters
-from prospect import prospect_args
-from prospect.fitting import fit_model
-from prospect.models.sedmodel import SpecModel, LineSpecModel, PolySpecModel
-from prospect.io import write_results as writer
-from astropy.cosmology import Planck15 as cosmo
-from astropy.table import Table
-from prospect.likelihood import NoiseModel
-from prospect.likelihood.kernels import Uncorrelated
-from prospect.sources.galaxy_basis import CSPSpecBasis
-import matplotlib.pyplot as plt
-from prospect.utils.obsutils import fix_obs
-import prospect.io.read_results as reader
-
-
 from copy import deepcopy
-
+from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
 from astropy.cosmology import Planck15 as cosmo
 from astropy.table import Table
-from astropy.io import fits
-
-from prospect import prospect_args
-from prospect.fitting import fit_model
-from prospect.io import write_results as writer
-from prospect.likelihood import NoiseModel
-from prospect.likelihood.kernels import Uncorrelated
-from prospect.sources.galaxy_basis import CSPSpecBasis
-from prospect.utils.obsutils import fix_obs
-from prospect.utils.plotting import get_best
-
-import prospect.io.read_results as reader
-from toolbox_prospector import *
-from prospect.models import sedmodel
-
 from sedpy.observate import load_filters
 from prospect.models.sedmodel import SpecModel, LineSpecModel
-import toolbox_prospector as tp
+from prospect.models import sedmodel
 from dynesty.plotting import _quantile as weighted_quantile
-
-
-
-import Build
+from toolbox_prospector import *
 
 
 path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
 path_data   =   os.path.join(path_wdir, "data/")
 path_plots  =   os.path.join(path_wdir, "plots/")
-path_output =   os.path.join(path_wdir, "prospector/")
 path_flury  =   os.path.join(path_data, 'flury/')
 path_mock   =   os.path.join(path_data, 'mock/')
 
-with open(path_mock + 'distorted_data.pickle', 'rb') as f:
-    dis_data = pickle.load(f)
 
-theta_number = '0'
-with open(path_data + 'distorted_data.pickle', 'rb') as f:
-    dis_data = pickle.load(f)
+def build_dis_obs(objid=3, tn = '0', err_floor=0.05, err_floor_el=0.05, **kwargs):
 
-def build_dis_obs(objid=3, tn = theta_number, dis_data=dis_data, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', err_floor=0.05, err_floor_el=0.05, **kwargs):
+    with open(path_data + 'distorted_data'+tn+'.pickle', 'rb') as f:
+        dis_data = pickle.load(f)
 
     obs = {}
     obs['filters']          =   dis_data['filters']
@@ -186,7 +145,7 @@ def build_obs(objid=3, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Apertur
 
     path_wdir   =   '/Users/amanda/Desktop/Paper/technical/'
     path_data   =   os.path.join(path_wdir, 'data/')
-    path_output =   os.path.join(path_wdir, 'prospector/')
+    
     path_flury  =   os.path.join(path_wdir, 'data/flury/')
     filternames =   ['sdss_u0','sdss_g0','sdss_r0','sdss_i0','sdss_z0','galex_FUV','galex_NUV']
     EL_info     =   pd.read_csv('/Users/amanda/opt/anaconda3/envs/astro/lib/python3.10/site-packages/fsps/data/emlines_info.dat', header=None, sep = ',')
