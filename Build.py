@@ -19,14 +19,19 @@ path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
 path_data   =   os.path.join(path_wdir, "data/")
 path_plots  =   os.path.join(path_wdir, "plots/")
 path_flury  =   os.path.join(path_data, 'flury/')
-path_mock   =   os.path.join(path_data, 'mock/')
 
+def build_dis_obs(objid=3, theta = 0, err_floor=0.05, **kwargs):
+    tn = str(theta)
 
-def build_dis_obs(objid=3, tn = '0', err_floor=0.05, err_floor_el=0.05, **kwargs):
+    path_mock   =   os.path.join(path_data, 'mock/')
 
     with open(path_data + 'distorted_data'+tn+'.pickle', 'rb') as f:
         dis_data = pickle.load(f)
 
+    with open(path_mock+'mock_thetas'+tn+'.pickle', 'rb') as f:
+        thetas = pickle.load(f)
+
+    print('we look at theta ' + tn + ', with params:' +str(thetas['thetas_'+tn]))
     obs = {}
     obs['filters']          =   dis_data['filters']
     obs['wave_effective']   =   dis_data['wave_effective']
@@ -40,7 +45,7 @@ def build_dis_obs(objid=3, tn = '0', err_floor=0.05, err_floor_el=0.05, **kwargs
     obs["line_ind"]     =   dis_data['line_ind']
     obs['unc']          =   dis_data['spec_unc_'+tn]
     obs['mask']         =   dis_data['mask']
-
+    
     obs['cat_row']      =   dis_data['cat_row']
     obs['id']           =   dis_data['id']
     obs['z_spec']       =   dis_data['z_spec']
@@ -571,7 +576,7 @@ def build_output(res, mod, sps, obs, sample_idx, wave_spec=np.logspace(3.5, 5, 1
         eout['obs']['elines']['eline_lum']['chain'][jj, :] = spec
 
         # calculate SFH-based quantities
-        sfh_params = tp.find_sfh_params(full_model, thetas, obs, sps, sm=sm)
+        sfh_params = find_sfh_params(full_model, thetas, obs, sps, sm=sm)
         if non_param:
             sfh_params['sfh'] = -1  # non-parametric
 
@@ -605,7 +610,7 @@ def build_output(res, mod, sps, obs, sample_idx, wave_spec=np.logspace(3.5, 5, 1
         eout['obs']['spec_l_dustfree']['chain'][jj, :] = spec_l_wodust
 
         # ages
-        eout['extras']['avg_age']['chain'][jj] = tp.massweighted_age(sfh_params)
+        eout['extras']['avg_age']['chain'][jj] = massweighted_age(sfh_params)
 
     
     # calculate percentiles from chain
