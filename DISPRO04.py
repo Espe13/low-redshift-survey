@@ -10,13 +10,12 @@ from prospect.io import write_results as writer
 from astropy.cosmology import Planck15 as cosmo
 
 
-iot = '4'
+iot = '13'
 
 path_wdir   =   "/Users/amanda/Desktop/Paper/technical/"
 path_output =   os.path.join(path_wdir, 'prospector/input_output_test'+iot+'/')
 path_data   =   os.path.join(path_wdir, "data/")
 
-    
 
 def build_obs(objid=3, theta = 0, err_floor=0.05, **kwargs):
     tn = str(theta)
@@ -52,7 +51,7 @@ def build_obs(objid=3, theta = 0, err_floor=0.05, **kwargs):
     print(obs)
     return obs
 
-def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_frac_obrun=True, add_IGM_model=True, add_neb=True,
+def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_table='GP_Aperture_Matched_Photometry_v0.fits', sfh_template="continuity_sfh", add_frac_obrun=True, add_IGM_model=False, add_neb=True,
                 nbins_sfh=8, student_t_width=0.3, z_limit_sfh=10.0, only_lowz=False, only_highz=False, add_eline_scaling=False, **extras):
     """
     Construct a model.
@@ -123,7 +122,7 @@ def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_ta
 
     # complexify the dust
     model_params['dust_type']['init'] = 4
-    model_params["dust2"]["prior"] = priors.ClippedNormal(mini=0.0, maxi=4.0, mean=0.3, sigma=1)
+    model_params["dust2"]["prior"] = priors.ClippedNormal(mini=0.0, maxi=4.0, mean=0.2, sigma=1)
     model_params["dust_index"] = {"N": 1,
                                   "isfree": True,
                                   "init": 0.0, "units": "power-law multiplication of Calzetti",
@@ -137,6 +136,7 @@ def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_ta
                              'depends_on': to_dust1,
                              "init": 0.0, "units": "optical depth towards young stars",
                              "prior": None}
+
     model_params['dust1_fraction'] = {'N': 1,
                                       'isfree': True,
                                       'init': 1.0,
@@ -175,7 +175,8 @@ def build_model(objid=3, fit_el=True, el_table="lzlcs_optlines_obs.csv", phot_ta
         model_params["frac_obrun"] = {"N": 1,
                                       "isfree": True,
                                       "init": 0.0, "units": "Fraction of H-ionizing photons that escapes or is dust absorbed.",
-                                      "prior": priors.ClippedNormal(mini=0.0, maxi=1.0, mean=0.0, sigma=0.5)}
+                                      "prior": priors.TopHat(mini=0.0, maxi=1.0)}
+                                      #priors.ClippedNormal(mini=0.0, maxi=1.0, mean=0.0, sigma=0.5)}
 
 
     # Now instantiate the model using this new dictionary of parameter specifications
@@ -245,7 +246,7 @@ if __name__ == '__main__':
                         help="If set, add flexibility to IGM model (scaling of Madau attenuation).")
     parser.add_argument('--objid', type=int, default=3,
                         help="zero-index row number in the table to fit.")
-    parser.add_argument('--theta', type=int, default=0,
+    parser.add_argument('--theta', type=np.float64, default=0,
                         help="which of the mock data.")
     parser.add_argument('--nbins_sfh', type=int, default=8,
                         help="Number of SFH bins.")
@@ -282,6 +283,7 @@ if __name__ == '__main__':
     run_params['nested_first_update'] = {'min_ncall': 20000, 'min_eff': 7.5}
 
     print(run_params)
+    print(iot)
 
     obs, model, sps, noise = build_all(**run_params)
     run_params["param_file"] = __file__

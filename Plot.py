@@ -131,13 +131,13 @@ def Corner_plots(eout, res, parnames, string, thetas, path):
     #cfig = subcorner_custom(res, ranges=None,   truths=thetas['thetas_'+string], truth_color='red', color='blue')
 
     
-    plt.savefig(path +'/corner/'+ + string +'_Corner.pdf')
+    plt.savefig(path +'corner/'+ string +'_Corner.pdf')
     plt.show()
     plt.clf()
 
 def Res_plots(eout, res, string, path):
     tfig = reader.traceplot(res, color='blue', lw=0.07)
-    plt.savefig(path+'/res/'+string+'_Res.pdf')
+    plt.savefig(path+'res/'+string+'_Res.pdf')
     plt.show()
     plt.clf()
 
@@ -166,80 +166,73 @@ def Plot_Phot(num, esc, esc_out, path_output, path_plots):
     res, obs, model = reader.results_from(path_output+ num +'_Thetas.h5')
     if model == None:
         model   =    Build.build_model(objid=3)
-    
+    a = 1.0 + obs['z_spec']
+
     imax        =   np.argmax(res['lnprobability'])
     csz         =   res["chain"].shape
     theta_max   =   res['chain'][imax, :].copy()
     flatchain   =   res["chain"]
-
     from prospect.plotting.corner import quantile
     weights     =   res.get("weights", None)
     post_pcts   =   quantile(flatchain.T, q=[0.16, 0.50, 0.84], weights=weights)
 
-    
     from prospect.utils.plotting import get_best
     parnames,theta_map  =   get_best(res)
     sps     =   reader.get_sps(res)
     wave    =   [f.wave_effective for f in res['obs']['filters']]
     wave    =   np.array(wave)
 
-    f, (ax, chiax) = plt.subplots(2,1, gridspec_kw={'height_ratios': [7, 2]}, sharex=True, figsize=(16,8))
 
+    f, (ax, chiax) = plt.subplots(2,1, gridspec_kw={'height_ratios': [12, 3]}, figsize=(16,8))
     ax.errorbar(wave,fnu2flam(wave,np.array(res['obs']['maggies'])*3631*1e-23),yerr=fnu2flam(wave, obs['maggies_unc']*3631*1e-23), label='Observed photometry',
             marker='o', markersize=3, alpha=1, ls='', lw=1,
             ecolor='red', markerfacecolor='None', markeredgecolor='red', capsize=7,
             markeredgewidth=1)
-
     map_parameter_vector    =   res["chain"][imax]
     spec, phot, frac        =   model.predict(map_parameter_vector, obs=obs, sps=sps)
-
-    x   =   sps.wavelengths # restframe lambda
+    x   =   sps.wavelengths *a # restframe lambda times redshift
     y   =   fnu2flam(x,model._norm_spec*3631*1e-23)
     x2  =   wave
     y2  =   fnu2flam(x2, phot*3631*1e-23)
- 
+
     ax.loglog(x,y, lw=0.8, color='orange', label = 'Model spectrum')
     ax.loglog(x2, y2, label='Model Photometry', 
                 marker='s',markersize=10, alpha=1, ls='', lw=1,
                 markerfacecolor='none', markeredgecolor='blue', 
                 markeredgewidth=1)
-    
+
     ymin    =  10**(-20.3)
     ymax    =  10**(-17.75)
-
     ax.set_ylim(ymin, ymax)
-    ax.set_xlim(10**(2.9), 10**(4.1))
-    ax.set_xlabel(r'$\lambda_{rest-frame}$ [$\AA$]',size=16)
-    ax.set_ylabel(r'f$_{\lambda}$ [cgs $\AA^{-1}$]',size=16)
-    ax.set_title("Photometry, Escape Fraction: " + esc +", Modeled Escape Fraction: " + str(esc_out), size=18)
+    ax.set_xlim(10**(3.05), 10**4)
 
+    ax.set_ylabel(r'f$_{\lambda}$ [cgs $\AA^{-1}$]',size=16)
+    ax.set_title("Photometry, Escape Fraction: " + str(esc) +", Modeled Escape Fraction: " + str(esc_out), size=18)
     chi_square  =   (obs['maggies'] - phot)**2 / obs['maggies_unc']**2
     chi         =   (obs['maggies'] - phot) / obs['maggies_unc']
     std=np.mean(abs(chi))
-
     #filter_colors = ['blue','green', 'orange', 'red','darkred', 'purple', 'c']
     filter_names    =   ['SDSS u','SDSS g','SDSS r','SDSS i','SDSS z','GALEX FUV','GALEX NUV']
     filter_position =   [3555.0, 4730.0, 6100.25, 7400.0, 8800.0, 1575.0, 2350.0]
-
     for f, n, x in zip(obs['filters'], filter_names, filter_position):
         w, t    =   f.wavelength.copy(), f.transmission.copy()
         t       =   t / t.max()
         t       =   10**(0.2*(np.log10(ymax/ymin)))*t * ymin
-
         ax.loglog(w, t, lw=1, color='gray', alpha=0.7)
         ax.fill_between(w, t, lw=1, color='gray', alpha=0.05)
-
     ax.legend(loc=4)
-
     chiax.axhspan(-1,1, color='orange', alpha=0.3, lw=0)
     chiax.axhspan(-std,std, color='white', alpha=0.9, lw=0)
     chiax.axhspan(-std,std, color='blue', alpha=0.1, lw=0)
     chiax.plot(x2,chi,'s', label='Model photometry',color='blue')
     chiax.axhline(y=0, color='red', linestyle='-', lw=0.5)
     chiax.set_ylabel('$\chi^2$ = '+str(np.round(np.sum(chi_square), 2)), size=16)
+    chiax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+    chiax.set_xlabel(r'$\lambda_{redshift}$ [$\AA$]',size=16)
 
     plt.tight_layout()
     plt.savefig(path_plots+'photometry/' +num+'_Photometry.pdf', dpi=1200)
+    return chi
 
 
 def Plot_Spec(num, esc, esc_out, dis_data, iot20, path_output, path_plot):
@@ -274,7 +267,7 @@ def Plot_Spec(num, esc, esc_out, dis_data, iot20, path_output, path_plot):
     ax.set_yticklabels(names_list, fontsize=12)
     for i in range(len(names_list)):
         ax.axhline(y=i, alpha=0.1, lw=1, color='grey')
-    ax.set_title("Emission Lines, Escape Fraction: " + esc +", Modeled Escape Fraction: " + str(esc_out), size=14)
+    ax.set_title("Emission Lines, Escape Fraction: " + str(esc) +", Modeled Escape Fraction: " + str(esc_out), size=14)
     ax.axvline(x=1.0, lw=2.0, color="red")
 
     ax.set_xlabel("Observation / Model", fontsize=12)
@@ -282,7 +275,49 @@ def Plot_Spec(num, esc, esc_out, dis_data, iot20, path_output, path_plot):
     ax.text(.70, 0.89, r'$\chi_{\rm tot}=%.1f$' % chi_sum, fontsize=16, ha='left', color='black', transform=ax.transAxes)
     ax.text(.70, 0.83, r'$\chi^2_{\rm square}=%.1f$' % chi_square, fontsize=16, ha='left', color='black', transform=ax.transAxes)
 
+
     #fscale = np.round([output_in['thetas']['linespec_scaling']['q50'], output_in['thetas']['linespec_scaling']['q50']-output_in['thetas']['linespec_scaling']['q16'], output_in['thetas']['linespec_scaling']['q84']-output_in['thetas']['linespec_scaling']['q50']], 3)
     #ax.text(.70, .80, r'$f_{\rm scale}=%.2f_{-%.2f}^{+%.2f}$' % (fscale[0], fscale[1], fscale[2]), fontsize=16, ha='left', transform=ax.transAxes)
     plt.tight_layout()
     plt.savefig(path_plot+'spectroscopy/' +num+'_Spectroscopy.pdf', dpi=1200)
+    return chi
+
+
+def plot_multiple_histograms_phot(arrays_list, esc_in, num, path_plots):
+    names       =   [str(i) for i in esc_in]
+    num_arrays  =   len(arrays_list)
+    fig, axes   =   plt.subplots(1, num_arrays, figsize=(25, 4), sharey=True)
+
+    for i in range(num_arrays):
+        ax = axes[i]
+        array = arrays_list[i]
+
+        # Create a random Gaussian distribution with the same number of values as the original array
+        gaussian_array = np.random.normal(1, 1, len(array))
+
+        ax.hist(array, bins='auto', alpha=0.7, color='blue', label='Original')
+        ax.hist(gaussian_array, bins='auto', alpha=0.4, label='Gaussian', color='red')
+        ax.set_title(f"$\chi$ for f: {names[i]}")
+        ax.set_xlabel("Values")
+        ax.set_ylabel("Frequency")
+        ax.set_xlim(-2.4, 2.4)
+        ax.legend()
+
+    plt.tight_layout()
+    plt.savefig(path_plots+ num+'chi_hist_phot.pdf', dpi=1200)
+
+
+def plot_histograms_spec(ars, num, path_plots, bins='auto'):
+    arrays_list = ars['spec']
+    for i, array in enumerate(arrays_list):
+        # Filter out the -inf values from the current array
+        filtered_data = array[array != float("-inf")]
+
+        # Plot the histogram with the filtered data
+        plt.hist(filtered_data, bins=bins, alpha=0.7, label=str(ars['esc_frac'][i]))
+    plt.xlabel('$\chi$')
+    plt.ylabel("Frequency")
+    plt.title('Histogram')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(path_plots+ num+'chi_hist_spec.pdf', dpi=1200)
